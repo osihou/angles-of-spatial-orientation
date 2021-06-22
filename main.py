@@ -1,7 +1,7 @@
 from os import error
 import tests as t
 import csv
-import EKF as EKF
+import ekf.EKF as EKF
 import numpy as np
 import errors
 
@@ -70,7 +70,7 @@ def read_case(inpath, outpath, ekf, params):
 
 if __name__ == '__main__':
 
-    ekf = EKF.EKF(dt = 0.005, qqgain=0.1, qbgain=10, rgain=0.1)
+    ekf = EKF.EKF(dt = 0.005, qqgain=0.01, qbgain=1, rgain=0.01)
 
     read_case("data/testdata2.csv","data/testout2.csv",ekf, [0, 4, 5, 6, 7, 8, 9 ] )
 

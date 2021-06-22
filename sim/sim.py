@@ -95,4 +95,4 @@ def loop_case_test(omega, steps):
 
 
 
-loop_case_test([0 * np.pi/180, 5 * np.pi/180,  0 * np.pi/180], 90)
+loop_case_test([1 * np.pi/180, 0 * np.pi/180,  0 * np.pi/180], 90)

@@ -1,11 +1,12 @@
 import serial
 import time
 from threading import Thread
-import EKF as EKF
+import ekf.EKF as EKF
 import numpy as np
-from itertools import count
 import csv
-import errors
+
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 
 def disect_output(s):
     return([ float(x) for i, x in enumerate(str(s).replace('g', '').split(' '))  if i % 2 != 0 ])
@@ -31,10 +32,13 @@ class SerialRead:
         self.YAW = []
         self.PITCH = []
         self.ROLL = []
+        self.TIME = []
 
         self.start_time = 0
 
-        self.ekf = EKF.EKF(dt = 0.1)
+        self.old_time = 0
+
+        self.ekf = EKF.EKF(dt = 0.1, qqgain=0.001, qbgain=0.001, rgain=0.01)
 
 
         print('Trying to connect to: ' + str(serial_port) + ' at ' + str(serial_baud) + ' BAUD.')
@@ -46,6 +50,13 @@ class SerialRead:
             print("Failed to connect with " + str(serial_port) + ' at ' + str(serial_baud) + ' BAUD.')
             exit()
 
+
+    def relax(self):
+        self.YAW.pop(0)
+        self.ROLL.pop(0)
+        self.PITCH.pop(0)
+        self.TIME.pop(0)
+
     def start_serial(self):
         if self.thread == None:
             self.thread = Thread(target=self.back_thread)
@@ -53,22 +64,35 @@ class SerialRead:
             while self.rec != True:
                 time.sleep(0.1)
 
-
     def process_output(self, output):
+
+        new_time = time.time() - self.start_time
+
+        dt = new_time - self.old_time
+
+        self.ekf.set_step(dt)
+
+        self.old_time = new_time
+
+        
         self.ekf.predict([output[3]*np.pi/180, output[4]*np.pi/180, output[5]*np.pi/180])
         self.ekf.update([output[0], output[1], output[2]])
         num = EKF.getEulerAngles(self.ekf.xHat[0:4])
+
+
         print('------------------------------')
+        print('Time: %.5f sek; dt: %.5f sek' %(new_time, dt))
         print('Gx: %.5f; Gy: %.5f; Gz: %.5f' % (output[3], output[4], output[5]))
         print('Ax: %.5f; Ay: %.5f; Az: %.5f' % (output[0], output[1], output[2]))
         print('Yaw: %.5f; Pitch: %.5f; Roll: %.5f' % num)
 
-        #self.file_writer.writerow([time.time() - self.start_time] + list(num) + list(errors.relative_error([0,0,0], num)) )
-        #self.file_writer.writerow([time.time() - self.start_time] + list(output)+list(num) + list(errors.relative_error([0,0,0], num)) )
-        #self.file_writer.writerow([time.time() - self.start_time] + list(num) )
-        self.file_writer.writerow([time.time() - self.start_time] + list(output) + list(num))
+        self.YAW.append(num[0])
+        self.PITCH.append(num[1])
+        self.ROLL.append(num[2])
+        self.TIME.append(new_time)
 
-
+        
+        self.file_writer.writerow([new_time] + list(output) + list(num))
 
     def back_thread(self):   
             time.sleep(1.0)  
@@ -87,7 +111,9 @@ class SerialRead:
         self.thread.join()
         self.sc.close()
         print('DISCONNECTED')
-        
+
+
+
 
 def port_config():
     serial_port = '/dev/ttyACM0'
@@ -96,6 +122,48 @@ def port_config():
 
     sr = SerialRead(serial_port,serial_baud)
     sr.start_serial()
+
+    counter = 0
+
+    def animate(i):
+        
+        ax1.plot(sr.TIME, sr.PITCH, linestyle='-',color='red', markerfacecolor='black', marker='.', markeredgecolor="black", markersize=1,  linewidth=1)
+
+        ax2.plot(sr.TIME, sr.ROLL, linestyle='-',color='red', markerfacecolor='black', marker='.', markeredgecolor="black", markersize=1,  linewidth=1)
+
+        counter =+ 1
+
+        
+        sr.relax()
+            
+        time.sleep(.01)
+
+
+
+
+    plt.style.use('bmh')
+    fig = plt.figure(figsize = (10,10))
+
+    #plt.ylim(-90,90)
+    #plt.xlim(0,linecount)
+
+
+    ax1 = plt.subplot(211)
+    ax1.set_ylim(-90,90)
+    ax1.set_ylabel('PITCH [deg.]')
+    ax1.set_title('PITCH')
+
+    ax2 = plt.subplot(212)
+    ax2.set_ylim(-180,180)
+    ax2.set_xlabel('time [sek.]')
+    ax2.set_ylabel('ROLL [deg.]')
+    ax2.set_title('ROLL')
+
+    ani = FuncAnimation(plt.gcf(), animate, 10)
+
+    plt.tight_layout()
+    plt.show()
+
 
 
 port_config()
